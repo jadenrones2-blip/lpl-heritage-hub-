@@ -2,9 +2,8 @@ import React from 'react';
 
 function Navigation({ activeTab, setActiveTab }) {
   const tabs = [
-    { id: 'quiz', label: 'Dashboard', description: 'Personalization Quiz' },
-    { id: 'echo', label: 'Echo', description: 'Document Upload' },
-    { id: 'bridge', label: 'Portfolio', description: 'Goals & Summary' },
+    { id: 'echo', label: 'NIGO Tool', description: 'Document Intelligence' },
+    { id: 'bridge', label: 'Portfolio Summarizer', description: 'Goals & Summary' },
   ];
 
   return (

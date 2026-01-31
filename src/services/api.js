@@ -59,22 +59,10 @@ export const explainConcept = async (concept, context = {}) => {
   return response.data;
 };
 
-// Quiz
-export const startQuiz = async () => {
-  const response = await api.get('/api/quiz/start');
-  return response.data;
-};
-
-export const submitQuiz = async (answers) => {
-  const response = await api.post('/api/quiz/submit', { answers });
-  return response.data;
-};
-
 // Goals
-export const generateGoals = async (caseId, quizAnswers, selectedGoals, totalAccountValue) => {
+export const generateGoals = async (caseId, portfolioData, totalAccountValue) => {
   const response = await api.post(`/api/goals/generate/${caseId}`, {
-    quiz_answers: quizAnswers,
-    selected_goals: selectedGoals,
+    portfolio_data: portfolioData,
     total_account_value: totalAccountValue,
   });
   return response.data;

@@ -9,19 +9,6 @@ function EchoAgent() {
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
   const [dragActive, setDragActive] = useState(false);
-  const [showQuizPrompt, setShowQuizPrompt] = useState(false);
-
-  useEffect(() => {
-    // Check if user just completed quiz
-    const userProfile = localStorage.getItem('user_profile');
-    const quizCompleted = sessionStorage.getItem('quiz_completed');
-    if (userProfile && !quizCompleted) {
-      setShowQuizPrompt(true);
-      sessionStorage.setItem('quiz_completed', 'true');
-      // Hide prompt after 10 seconds
-      setTimeout(() => setShowQuizPrompt(false), 10000);
-    }
-  }, []);
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -152,40 +139,6 @@ function EchoAgent() {
             <span className="agent-badge agent-echo">Data Extractor</span>
           </h2>
         </div>
-        {showQuizPrompt && (() => {
-          const userProfile = JSON.parse(localStorage.getItem('user_profile') || '{}');
-          const goalTitle = userProfile.primary_focus === 'home' ? 'Home Down Payment' :
-                           userProfile.primary_focus === 'retirement' ? 'Retirement Savings' :
-                           userProfile.primary_focus === 'emergency' ? 'Emergency Fund' : 'goal';
-          return (
-            <div style={{
-              padding: '1.5rem',
-              background: 'linear-gradient(135deg, var(--lpl-navy) 0%, #003A8A 100%)',
-              color: 'var(--lpl-white)',
-              borderRadius: 'var(--radius)',
-              marginBottom: '1.5rem',
-              textAlign: 'center',
-              boxShadow: '0 4px 12px var(--lpl-shadow-medium)'
-            }}>
-              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🎯</div>
-              <h3 style={{ 
-                fontSize: 'var(--font-size-xl)', 
-                fontWeight: 600, 
-                marginBottom: '0.5rem',
-                color: 'var(--lpl-white)'
-              }}>
-                Now, upload a document to see how close you are to your {goalTitle}
-              </h3>
-              <p style={{ 
-                fontSize: 'var(--font-size-sm)', 
-                opacity: 0.9,
-                margin: 0
-              }}>
-                We'll analyze your document and show your progress toward your ${userProfile.target_amount?.toLocaleString() || 'goal'}
-              </p>
-            </div>
-          );
-        })()}
 
         <p style={{ marginBottom: '1.5rem', color: '#666' }}>
           Upload complex financial documents (Account Establishment forms, Roth IRA agreements, etc.) 
@@ -262,32 +215,197 @@ function EchoAgent() {
         {error && <div className="error-message">{error}</div>}
       </div>
 
-      {/* Green Banner for Documents in Good Order */}
-      {results && results.nigo_status === 'CLEAN' && (!results.nigo_errors || results.nigo_errors.length === 0) && (
-        <div style={{
-          padding: '1.5rem',
-          background: '#d4edda',
-          border: '3px solid #28A745',
-          borderRadius: '8px',
-          marginBottom: '1.5rem',
-          textAlign: 'center'
-        }}>
-          <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>✓</div>
-          <div style={{ 
-            fontSize: '1.25rem', 
-            fontWeight: 700, 
-            color: '#155724',
-            marginBottom: '0.25rem'
-          }}>
-            DOCUMENT IS IN GOOD ORDER
+      {/* Compliance Health Dashboard - RAG System */}
+      {results && (
+        <div className="compliance-dashboard">
+          <div className="dashboard-header">
+            <h3 className="dashboard-title">Compliance Health Dashboard</h3>
+            <div className="rag-indicator">
+              {results.nigo_status === 'CLEAN' || (!results.nigo_errors || results.nigo_errors.length === 0) ? (
+                <span className="rag-badge rag-green">
+                  <span className="rag-dot"></span>
+                  GREEN - Document In Good Order
+                </span>
+              ) : results.nigo_status === 'REVIEW' || (results.nigo_errors && results.nigo_errors.some(e => e.severity === 'medium')) ? (
+                <span className="rag-badge rag-amber">
+                  <span className="rag-dot"></span>
+                  AMBER - Review Required
+                </span>
+              ) : (
+                <span className="rag-badge rag-red">
+                  <span className="rag-dot"></span>
+                  RED - Signature Missing / High Severity
+                </span>
+              )}
+            </div>
           </div>
-          <div style={{ 
-            fontSize: '1rem', 
-            fontWeight: 600, 
-            color: '#155724'
-          }}>
-            READY FOR LPL SUBMISSION
+
+          <div className="dashboard-stats">
+            <div className="stat-item">
+              <div className="stat-value" style={{ color: results.nigo_status === 'CLEAN' ? '#287E33' : '#002D72' }}>
+                {results.nigo_errors ? results.nigo_errors.length : 0}
+              </div>
+              <div className="stat-label">Issues Found</div>
+            </div>
+            <div className="stat-item">
+              <div className="stat-value" style={{ color: results.confidence_score >= 80 ? '#287E33' : results.confidence_score >= 60 ? '#FFC107' : '#DC3545' }}>
+                {results.confidence_score?.toFixed(0) || 'N/A'}%
+              </div>
+              <div className="stat-label">Confidence Score</div>
+            </div>
+            <div className="stat-item">
+              <div className="stat-value" style={{ color: '#287E33' }}>
+                40%
+              </div>
+              <div className="stat-label">NIGO Reduction</div>
+            </div>
           </div>
+
+          {results.nigo_status === 'CLEAN' && (!results.nigo_errors || results.nigo_errors.length === 0) && (
+            <div className="dashboard-success">
+              <div className="success-icon">✓</div>
+              <div className="success-title">DOCUMENT IS IN GOOD ORDER</div>
+              <div className="success-subtitle">READY FOR LPL SUBMISSION</div>
+            </div>
+          )}
+
+          <style jsx>{`
+            .compliance-dashboard {
+              background: white;
+              border-radius: 12px;
+              padding: 1.5rem;
+              margin-bottom: 1.5rem;
+              box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+              border: 1px solid #e0e0e0;
+            }
+
+            .dashboard-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 1.5rem;
+              flex-wrap: wrap;
+              gap: 1rem;
+            }
+
+            .dashboard-title {
+              font-size: 1.25rem;
+              font-weight: 700;
+              color: #002D72;
+              margin: 0;
+            }
+
+            .rag-indicator {
+              display: flex;
+              align-items: center;
+            }
+
+            .rag-badge {
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.5rem 1rem;
+              border-radius: 8px;
+              font-weight: 600;
+              font-size: 0.875rem;
+            }
+
+            .rag-green {
+              background: #d4edda;
+              color: #155724;
+              border: 2px solid #28A745;
+            }
+
+            .rag-amber {
+              background: #fffbf0;
+              color: #854d0e;
+              border: 2px solid #FFC107;
+            }
+
+            .rag-red {
+              background: #fff5f5;
+              color: #b91c1c;
+              border: 2px solid #DC3545;
+            }
+
+            .rag-dot {
+              width: 12px;
+              height: 12px;
+              border-radius: 50%;
+              display: inline-block;
+            }
+
+            .rag-green .rag-dot {
+              background: #28A745;
+            }
+
+            .rag-amber .rag-dot {
+              background: #FFC107;
+            }
+
+            .rag-red .rag-dot {
+              background: #DC3545;
+            }
+
+            .dashboard-stats {
+              display: grid;
+              grid-template-columns: repeat(3, 1fr);
+              gap: 1rem;
+              margin-bottom: 1rem;
+            }
+
+            .stat-item {
+              text-align: center;
+              padding: 1rem;
+              background: #f8f9fa;
+              border-radius: 8px;
+            }
+
+            .stat-value {
+              font-size: 1.75rem;
+              font-weight: 700;
+              margin-bottom: 0.25rem;
+            }
+
+            .stat-label {
+              font-size: 0.875rem;
+              color: #666;
+              font-weight: 500;
+            }
+
+            .dashboard-success {
+              text-align: center;
+              padding: 1.5rem;
+              background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+              border: 3px solid #28A745;
+              border-radius: 8px;
+              margin-top: 1rem;
+            }
+
+            .success-icon {
+              font-size: 2rem;
+              margin-bottom: 0.5rem;
+            }
+
+            .success-title {
+              font-size: 1.25rem;
+              font-weight: 700;
+              color: #155724;
+              margin-bottom: 0.25rem;
+            }
+
+            .success-subtitle {
+              font-size: 1rem;
+              font-weight: 600;
+              color: #155724;
+            }
+
+            @media (max-width: 768px) {
+              .dashboard-stats {
+                grid-template-columns: 1fr;
+              }
+            }
+          `}</style>
         </div>
       )}
 

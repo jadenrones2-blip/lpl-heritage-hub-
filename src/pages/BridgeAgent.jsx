@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { getPortfolioData, subscribeToPortfolioChanges, addExtractedAccount, savePortfolioData } from '../services/portfolioService';
 import { uploadPortfolio } from '../services/api';
-import GoalCard from '../components/GoalCard';
 
 function BridgeAgent() {
   const [portfolioData, setPortfolioData] = useState(null);
-  const [goals, setGoals] = useState([]);
+  const [portfolioSummary, setPortfolioSummary] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [uploadFile, setUploadFile] = useState(null);
@@ -13,6 +13,7 @@ function BridgeAgent() {
   const [uploadError, setUploadError] = useState(null);
   const [uploadSuccess, setUploadSuccess] = useState(null);
   const [dragActive, setDragActive] = useState(false);
+  const [syncingAnimation, setSyncingAnimation] = useState(false);
 
   useEffect(() => {
     // Load initial portfolio data
@@ -20,28 +21,13 @@ function BridgeAgent() {
     setPortfolioData(data);
     setLastUpdate(data.last_updated);
 
-    // Load goals from quiz results (stored in localStorage)
-    const quizResults = localStorage.getItem('quiz_results');
-    const userProfile = localStorage.getItem('user_profile');
-    
-    if (quizResults) {
+    // Load portfolio summary if available
+    const savedSummary = localStorage.getItem('portfolio_summary');
+    if (savedSummary) {
       try {
-        const results = JSON.parse(quizResults);
-        if (results.goal_cards) {
-          // Update goal cards with target from user_profile if available
-          let goalCards = results.goal_cards;
-          if (userProfile) {
-            const profile = JSON.parse(userProfile);
-            goalCards = goalCards.map(goal => ({
-              ...goal,
-              target_amount: profile.target_amount || goal.target_amount || 100000,
-              timeline: profile.timeline ? getTimelineLabel(profile.timeline) : goal.timeline
-            }));
-          }
-          setGoals(goalCards);
-        }
+        setPortfolioSummary(JSON.parse(savedSummary));
       } catch (error) {
-        console.error('Error parsing quiz results:', error);
+        console.error('Error parsing portfolio summary:', error);
       }
     }
 
@@ -62,85 +48,6 @@ function BridgeAgent() {
     };
   }, [lastUpdate]);
 
-  // Calculate progress for each goal based on account types
-  const calculateGoalProgress = (goal) => {
-    if (!portfolioData || !portfolioData.accounts || portfolioData.accounts.length === 0) {
-      return 0;
-    }
-
-    const goalTitle = goal.title.toLowerCase();
-    let progress = 0;
-
-    // Map account types to goals
-    portfolioData.accounts.forEach(account => {
-      const accountType = account.account_type.toLowerCase();
-      const balance = account.total_balance || 0;
-
-      // Retirement goals
-      if (goalTitle.includes('retirement') || goalTitle.includes('ira')) {
-        if (accountType.includes('ira') || accountType.includes('401') || accountType.includes('retirement')) {
-          progress += balance;
-        }
-      }
-      // Home/Down Payment goals
-      else if (goalTitle.includes('home') || goalTitle.includes('down payment') || goalTitle.includes('house')) {
-        if (accountType.includes('savings') || accountType.includes('brokerage')) {
-          progress += balance * 0.3; // Assume 30% allocated to home
-        }
-      }
-      // Emergency Fund goals
-      else if (goalTitle.includes('emergency') || goalTitle.includes('safety')) {
-        if (accountType.includes('savings') || accountType.includes('cash')) {
-          progress += balance * 0.5; // Assume 50% allocated to emergency
-        }
-      }
-      // Education goals
-      else if (goalTitle.includes('education') || goalTitle.includes('college')) {
-        if (accountType.includes('529') || accountType.includes('education')) {
-          progress += balance;
-        }
-      }
-      // General wealth building
-      else {
-        // Default: allocate a portion based on account type
-        if (!accountType.includes('ira') && !accountType.includes('401')) {
-          progress += balance * 0.2;
-        }
-      }
-    });
-
-    return progress;
-  };
-
-  // Check if a goal has a verified account
-  const isGoalVerified = (goal) => {
-    if (!portfolioData || !portfolioData.accounts) return false;
-    
-    const goalTitle = goal.title.toLowerCase();
-    return portfolioData.accounts.some(account => {
-      const accountType = account.account_type.toLowerCase();
-      
-      if (goalTitle.includes('retirement') || goalTitle.includes('ira')) {
-        return accountType.includes('ira') || accountType.includes('401') || accountType.includes('retirement');
-      }
-      if (goalTitle.includes('home') || goalTitle.includes('down payment')) {
-        return accountType.includes('savings') || accountType.includes('brokerage');
-      }
-      if (goalTitle.includes('emergency')) {
-        return accountType.includes('savings') || accountType.includes('cash');
-      }
-      if (goalTitle.includes('education') || goalTitle.includes('college')) {
-        return accountType.includes('529') || accountType.includes('education');
-      }
-      
-      return true; // Default to verified if any account exists
-    });
-  };
-
-  const handleScheduleAdvisor = (goal) => {
-    // In a real app, this would open a scheduling modal or redirect
-    alert(`Scheduling advisor consultation for: ${goal.title}\n\nThis would open your advisor scheduling interface.`);
-  };
 
   // Calculate total assets by account type
   const getAccountTypeSummary = () => {
@@ -238,13 +145,21 @@ function BridgeAgent() {
         savePortfolioData(updatedData);
         setPortfolioData(updatedData);
 
-        // Update goals if goal_cards are provided
-        if (result.goal_cards && result.goal_cards.length > 0) {
-          setGoals(result.goal_cards);
-          localStorage.setItem('quiz_results', JSON.stringify({
-            goal_cards: result.goal_cards,
-            case_id: result.case_id
-          }));
+        // Update portfolio summary if provided
+        if (result.summary || result.portfolio_summary) {
+          // Trigger syncing animation
+          setSyncingAnimation(true);
+          setTimeout(() => {
+            const summary = {
+              text: result.summary || result.portfolio_summary,
+              total_value: result.total_account_value || updatedData.total_balance,
+              accounts: accounts,
+              generated_at: new Date().toISOString()
+            };
+            setPortfolioSummary(summary);
+            localStorage.setItem('portfolio_summary', JSON.stringify(summary));
+            setSyncingAnimation(false);
+          }, 2000);
         }
 
         setUploadSuccess(`Portfolio uploaded successfully! ${accounts.length} account(s) added. ${result.s3_key ? 'Stored in AWS S3.' : 'Stored locally.'}`);
@@ -269,7 +184,7 @@ function BridgeAgent() {
           </h2>
         </div>
         <p style={{ marginBottom: 'var(--spacing-lg)', color: 'var(--lpl-text-light)', fontSize: 'var(--font-size-sm)' }}>
-          Upload portfolio documents (statements, reports, etc.) to extract data, generate AI summaries, create goal cards, and store securely in AWS. The Bridge translates complex holdings into understandable financial goals.
+          Upload portfolio documents (statements, reports, etc.) to extract data and generate a clear, heir-friendly summary. The Bridge translates complex financial documents into plain language so you understand exactly what you've inherited.
         </p>
 
         {/* Portfolio Upload Section */}
@@ -346,13 +261,137 @@ function BridgeAgent() {
           )}
         </div>
 
-        {/* Syncing Animation */}
-        {syncing && (
-          <div className="syncing-animation">
-            <div className="syncing-spinner"></div>
-            <p className="syncing-text">Syncing to Goals...</p>
-          </div>
-        )}
+        {/* Syncing Animation - Visual data flow from document to Goal Cards */}
+        <AnimatePresence>
+          {(syncing || syncingAnimation) && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="syncing-animation-bridge"
+            >
+              <div className="syncing-content">
+                <div className="syncing-icon-container">
+                  <motion.div
+                    animate={{ 
+                      rotate: 360,
+                      scale: [1, 1.2, 1]
+                    }}
+                    transition={{ 
+                      rotate: { duration: 2, repeat: Infinity, ease: "linear" },
+                      scale: { duration: 1.5, repeat: Infinity }
+                    }}
+                    className="syncing-icon"
+                  >
+                    🔄
+                  </motion.div>
+                </div>
+                <motion.p
+                  animate={{ opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                  className="syncing-text"
+                >
+                  Processing your portfolio and generating heir-friendly summary...
+                </motion.p>
+                <div className="syncing-progress">
+                  <motion.div
+                    initial={{ width: '0%' }}
+                    animate={{ width: '100%' }}
+                    transition={{ duration: 2, ease: "easeInOut" }}
+                    className="syncing-progress-bar"
+                  />
+                </div>
+                <div className="syncing-steps">
+                  <motion.div
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="syncing-step"
+                  >
+                    ✓ Extracting data with Textract
+                  </motion.div>
+                  <motion.div
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.6 }}
+                    className="syncing-step"
+                  >
+                    ✓ Generating summary with Bedrock
+                  </motion.div>
+                  <motion.div
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 1.0 }}
+                    className="syncing-step"
+                  >
+                    ✓ Generating Heir-Friendly Summary
+                  </motion.div>
+                </div>
+              </div>
+              <style jsx>{`
+                .syncing-animation-bridge {
+                  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+                  border: 2px solid #002D72;
+                  border-radius: 12px;
+                  padding: 2rem;
+                  margin: 1.5rem 0;
+                  text-align: center;
+                }
+
+                .syncing-content {
+                  max-width: 400px;
+                  margin: 0 auto;
+                }
+
+                .syncing-icon-container {
+                  margin-bottom: 1rem;
+                }
+
+                .syncing-icon {
+                  font-size: 3rem;
+                  display: inline-block;
+                }
+
+                .syncing-text {
+                  font-size: 1.125rem;
+                  font-weight: 600;
+                  color: #002D72;
+                  margin-bottom: 1rem;
+                }
+
+                .syncing-progress {
+                  width: 100%;
+                  height: 8px;
+                  background: #e0e0e0;
+                  border-radius: 4px;
+                  overflow: hidden;
+                  margin-bottom: 1.5rem;
+                }
+
+                .syncing-progress-bar {
+                  height: 100%;
+                  background: linear-gradient(90deg, #002D72 0%, #287E33 100%);
+                  border-radius: 4px;
+                }
+
+                .syncing-steps {
+                  display: flex;
+                  flex-direction: column;
+                  gap: 0.5rem;
+                  text-align: left;
+                }
+
+                .syncing-step {
+                  font-size: 0.875rem;
+                  color: #666;
+                  padding: 0.5rem;
+                  background: white;
+                  border-radius: 6px;
+                }
+              `}</style>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Total Assets Summary */}
         <div className="portfolio-summary">
@@ -412,59 +451,266 @@ function BridgeAgent() {
         )}
       </div>
 
-      {/* Goal Cards Section - Main Content Area */}
-      <div className="goal-cards-section">
-        {goals.length > 0 ? (
-          <div className="card">
+      {/* Portfolio Summary for Heir - Main Content Area */}
+      <div className="portfolio-summary-section">
+        {portfolioSummary ? (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="card portfolio-summary-card-main"
+          >
             <div className="card-header">
-              <h3 className="card-title">Your Personalized Goal Cards</h3>
-              <span className="goals-count">{goals.length} Active Goal{goals.length !== 1 ? 's' : ''}</span>
+              <h3 className="card-title">Your Inherited Portfolio Summary</h3>
+              <span className="summary-badge">Generated by The Bridge</span>
             </div>
-            <div className="goal-cards-grid">
-              {goals.map((goal, index) => {
-                const currentProgress = calculateGoalProgress(goal);
-                const verified = isGoalVerified(goal);
-                
-                // Get target from user_profile if available, otherwise use goal's target
-                const userProfile = localStorage.getItem('user_profile');
-                let targetAmount = goal.target_amount || 100000;
-                if (userProfile) {
-                  try {
-                    const profile = JSON.parse(userProfile);
-                    // Use profile target if goal type matches
-                    if (goal.goal_type === profile.primary_focus) {
-                      targetAmount = profile.target_amount;
-                    }
-                  } catch (e) {
-                    console.error('Error parsing user profile:', e);
-                  }
-                }
-                
-                // Ensure goal has target_amount from user_profile
-                const goalWithTarget = {
-                  ...goal,
-                  target_amount: targetAmount,
-                  description: goal.description || goal.purpose || '',
-                  timeline: goal.timeline || goal.estimated_time || 'Ongoing'
-                };
 
-                return (
-                  <GoalCard
-                    key={index}
-                    goal={goalWithTarget}
-                    currentProgress={currentProgress}
-                    isVerified={verified}
-                    onScheduleAdvisor={handleScheduleAdvisor}
+            {/* AI-Generated Summary */}
+            <div className="heir-summary-content">
+              <div className="summary-intro">
+                <h4 style={{ color: '#002D72', marginBottom: '0.5rem', fontSize: '1.125rem' }}>
+                  What You've Inherited
+                </h4>
+                <p style={{ color: '#666', fontSize: '0.9375rem', lineHeight: '1.6', marginBottom: '1.5rem' }}>
+                  This summary explains your inherited portfolio in plain language. We've translated complex financial terms into clear explanations.
+                </p>
+              </div>
+
+              <div className="summary-text">
+                {portfolioSummary.text ? (
+                  <div 
+                    className="summary-markdown"
+                    dangerouslySetInnerHTML={{ 
+                      __html: portfolioSummary.text
+                        .replace(/\n\n/g, '</p><p>')
+                        .replace(/\n/g, '<br>')
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                    }}
                   />
-                );
-              })}
+                ) : (
+                  <p>Portfolio summary is being generated...</p>
+                )}
+              </div>
+
+              {/* Detailed Account Breakdown */}
+              {portfolioData && portfolioData.accounts && portfolioData.accounts.length > 0 && (
+                <div className="detailed-accounts" style={{ marginTop: '2rem' }}>
+                  <h4 style={{ color: '#002D72', marginBottom: '1rem', fontSize: '1.125rem' }}>
+                    Account Details
+                  </h4>
+                  <div className="accounts-list">
+                    {portfolioData.accounts.map((account, index) => (
+                      <motion.div
+                        key={account.id || index}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                        className="account-detail-card"
+                      >
+                        <div className="account-detail-header">
+                          <div>
+                            <div className="account-detail-type">{account.account_type || 'Account'}</div>
+                            {account.document_name && (
+                              <div className="account-detail-source">From: {account.document_name}</div>
+                            )}
+                          </div>
+                          <div className="account-detail-balance">
+                            ${(account.total_balance || 0).toLocaleString('en-US', { 
+                              minimumFractionDigits: 2, 
+                              maximumFractionDigits: 2 
+                            })}
+                          </div>
+                        </div>
+                        {account.asset_classes && account.asset_classes.length > 0 && (
+                          <div className="account-detail-assets">
+                            <span className="assets-label">Asset Classes:</span>
+                            <div className="assets-tags">
+                              {account.asset_classes.map((asset, i) => (
+                                <span key={i} className="asset-tag">{asset}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {account.extracted_at && (
+                          <div className="account-detail-date">
+                            Extracted: {new Date(account.extracted_at).toLocaleDateString()}
+                          </div>
+                        )}
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Total Value Summary */}
+              {portfolioSummary.total_value && (
+                <div className="total-value-summary" style={{ 
+                  marginTop: '2rem', 
+                  padding: '1.5rem', 
+                  background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
+                  borderRadius: '12px',
+                  border: '2px solid #002D72'
+                }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.875rem', color: '#666', marginBottom: '0.5rem' }}>
+                      Total Inherited Value
+                    </div>
+                    <div style={{ fontSize: '2rem', fontWeight: 700, color: '#002D72' }}>
+                      ${portfolioSummary.total_value.toLocaleString('en-US', { 
+                        minimumFractionDigits: 2, 
+                        maximumFractionDigits: 2 
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Next Steps */}
+              <div className="next-steps" style={{ marginTop: '2rem', padding: '1.5rem', background: '#f8f9fa', borderRadius: '12px' }}>
+                <h4 style={{ color: '#002D72', marginBottom: '1rem', fontSize: '1.125rem' }}>
+                  Recommended Next Steps
+                </h4>
+                <ul style={{ margin: 0, paddingLeft: '1.5rem', color: '#666', lineHeight: '1.8' }}>
+                  <li>Review this summary with a financial advisor</li>
+                  <li>Understand any tax implications of your inheritance</li>
+                  <li>Consider your long-term financial goals</li>
+                  <li>Update beneficiary designations if needed</li>
+                </ul>
+                <button 
+                  className="btn btn-primary"
+                  style={{ marginTop: '1rem', width: '100%' }}
+                  onClick={() => alert('This would open your advisor scheduling interface.')}
+                >
+                  Schedule Meeting with Advisor
+                </button>
+              </div>
             </div>
-          </div>
+
+            <style jsx>{`
+              .portfolio-summary-card-main {
+                max-width: 900px;
+                margin: 0 auto;
+              }
+
+              .summary-badge {
+                font-size: 0.75rem;
+                padding: 0.25rem 0.75rem;
+                background: #002D72;
+                color: white;
+                border-radius: 12px;
+                font-weight: 600;
+              }
+
+              .heir-summary-content {
+                padding: 1.5rem 0;
+              }
+
+              .summary-text {
+                background: white;
+                padding: 1.5rem;
+                border-radius: 8px;
+                border: 1px solid #e0e0e0;
+                line-height: 1.8;
+                color: #333;
+                font-size: 0.9375rem;
+              }
+
+              .summary-text p {
+                margin: 0 0 1rem 0;
+              }
+
+              .summary-text p:last-child {
+                margin-bottom: 0;
+              }
+
+              .summary-text strong {
+                color: #002D72;
+                font-weight: 600;
+              }
+
+              .accounts-list {
+                display: flex;
+                flex-direction: column;
+                gap: 1rem;
+              }
+
+              .account-detail-card {
+                background: white;
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+                padding: 1.25rem;
+                transition: box-shadow 0.2s;
+              }
+
+              .account-detail-card:hover {
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+              }
+
+              .account-detail-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                margin-bottom: 0.75rem;
+              }
+
+              .account-detail-type {
+                font-weight: 600;
+                color: #002D72;
+                font-size: 1rem;
+                margin-bottom: 0.25rem;
+              }
+
+              .account-detail-source {
+                font-size: 0.8125rem;
+                color: #666;
+              }
+
+              .account-detail-balance {
+                font-size: 1.25rem;
+                font-weight: 700;
+                color: #287E33;
+              }
+
+              .account-detail-assets {
+                margin-top: 0.75rem;
+                padding-top: 0.75rem;
+                border-top: 1px solid #f0f0f0;
+              }
+
+              .assets-label {
+                font-size: 0.8125rem;
+                color: #666;
+                margin-right: 0.5rem;
+              }
+
+              .assets-tags {
+                display: inline-flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                margin-top: 0.5rem;
+              }
+
+              .asset-tag {
+                font-size: 0.75rem;
+                padding: 0.25rem 0.75rem;
+                background: #f0f0f0;
+                border-radius: 12px;
+                color: #002D72;
+                font-weight: 500;
+              }
+
+              .account-detail-date {
+                font-size: 0.75rem;
+                color: #999;
+                margin-top: 0.5rem;
+              }
+            `}</style>
+          </motion.div>
         ) : (
           <div className="card">
             <div className="empty-state">
               <p style={{ color: 'var(--lpl-text-light)', textAlign: 'center', padding: 'var(--spacing-xl)' }}>
-                Upload a portfolio to generate Goal Cards, or complete the Personalization Quiz in the Dashboard tab.
+                Upload a portfolio document to generate a clear, heir-friendly summary of what you've inherited.
               </p>
             </div>
           </div>

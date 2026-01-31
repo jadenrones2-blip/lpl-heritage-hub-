@@ -697,206 +697,6 @@ def extract_account_value(textract_response, extracted_text):
     return 0.0
 
 
-@app.route('/api/quiz/start', methods=['GET'])
-def start_quiz():
-    """Get quiz questions for financial goals assessment."""
-    quiz_questions = [
-        {
-            'id': 1,
-            'question': 'What is your primary financial goal as an heir?',
-            'type': 'single_choice',
-            'options': [
-                {'id': 'a', 'text': 'Preserve and maintain the inherited assets', 'points': 3},
-                {'id': 'b', 'text': 'Grow the portfolio for future generations', 'points': 5},
-                {'id': 'c', 'text': 'Use funds for immediate needs and expenses', 'points': 2},
-                {'id': 'd', 'text': 'Diversify and rebalance the portfolio', 'points': 4}
-            ]
-        },
-        {
-            'id': 2,
-            'question': 'What is your risk tolerance level?',
-            'type': 'single_choice',
-            'options': [
-                {'id': 'a', 'text': 'Very Conservative - Preserve capital at all costs', 'points': 1},
-                {'id': 'b', 'text': 'Conservative - Some growth with low risk', 'points': 2},
-                {'id': 'c', 'text': 'Moderate - Balanced growth and risk', 'points': 3},
-                {'id': 'd', 'text': 'Aggressive - Maximize growth potential', 'points': 5}
-            ]
-        },
-        {
-            'id': 3,
-            'question': 'What is your time horizon for this portfolio?',
-            'type': 'single_choice',
-            'options': [
-                {'id': 'a', 'text': 'Less than 1 year', 'points': 1},
-                {'id': 'b', 'text': '1-5 years', 'points': 2},
-                {'id': 'c', 'text': '5-10 years', 'points': 3},
-                {'id': 'd', 'text': '10+ years', 'points': 4}
-            ]
-        },
-        {
-            'id': 4,
-            'question': 'Which estate planning tasks are most important to you? (Select all that apply)',
-            'type': 'multiple_choice',
-            'options': [
-                {'id': 'a', 'text': 'Update beneficiary designations', 'points': 2},
-                {'id': 'b', 'text': 'Create or update will', 'points': 3},
-                {'id': 'c', 'text': 'Set up trusts', 'points': 4},
-                {'id': 'd', 'text': 'Tax planning and optimization', 'points': 3},
-                {'id': 'e', 'text': 'Document organization', 'points': 2}
-            ]
-        },
-        {
-            'id': 5,
-            'question': 'How familiar are you with financial planning?',
-            'type': 'single_choice',
-            'options': [
-                {'id': 'a', 'text': 'Very unfamiliar - Need guidance', 'points': 1},
-                {'id': 'b', 'text': 'Somewhat familiar - Basic knowledge', 'points': 2},
-                {'id': 'c', 'text': 'Familiar - Comfortable with concepts', 'points': 3},
-                {'id': 'd', 'text': 'Very familiar - Experienced investor', 'points': 4}
-            ]
-        }
-    ]
-    
-    return jsonify({
-        'status': 'success',
-        'quiz_id': f'quiz_{datetime.now().strftime("%Y%m%d_%H%M%S")}',
-        'questions': quiz_questions,
-        'total_questions': len(quiz_questions)
-    })
-
-
-@app.route('/api/quiz/submit', methods=['POST'])
-def submit_quiz():
-    """
-    Submit quiz answers and receive goal cards with gamification.
-    Expects: { "answers": [{"question_id": 1, "selected": ["a"]}, ...] }
-    """
-    data = request.get_json()
-    if not data or 'answers' not in data:
-        return jsonify({
-            'error': 'Please provide answers in the request body'
-        }), 400
-
-    answers = data['answers']
-    
-    # Calculate total points
-    total_points = 0
-    max_points = 25  # Maximum possible points
-    
-    # Process answers and calculate points
-    for answer in answers:
-        question_id = answer.get('question_id')
-        selected = answer.get('selected', [])
-        
-        # Simple scoring (in real app, you'd look up the actual point values)
-        if isinstance(selected, list):
-            total_points += len(selected) * 2  # 2 points per selection
-        else:
-            total_points += 2
-    
-    # Determine level and badge
-    if total_points >= 20:
-        level = 'Expert'
-        badge = '🏆 Master Planner'
-        level_number = 5
-    elif total_points >= 15:
-        level = 'Advanced'
-        badge = '⭐ Strategic Thinker'
-        level_number = 4
-    elif total_points >= 10:
-        level = 'Intermediate'
-        badge = '📊 Knowledgeable Heir'
-        level_number = 3
-    elif total_points >= 5:
-        level = 'Beginner'
-        badge = '🌱 Getting Started'
-        level_number = 2
-    else:
-        level = 'Newcomer'
-        badge = '🎯 First Steps'
-        level_number = 1
-    
-    # Generate goal cards based on quiz responses
-    goal_cards = generate_goal_cards(answers, total_points, level)
-    
-    # Calculate progress percentage
-    progress_percentage = int((total_points / max_points) * 100)
-    
-    # Generate gamification summary
-    gamification = {
-        'total_points': total_points,
-        'max_points': max_points,
-        'progress_percentage': progress_percentage,
-        'level': level,
-        'level_number': level_number,
-        'badge': badge,
-        'achievements_unlocked': get_achievements(total_points, answers),
-        'next_level_points': get_next_level_points(level_number),
-        'streak_days': 1,  # Could be tracked in a database
-        'completed_goals': 0,
-        'total_goals': len(goal_cards)
-    }
-    
-    return jsonify({
-        'status': 'success',
-        'quiz_results': {
-            'total_points': total_points,
-            'level': level,
-            'badge': badge
-        },
-        'goal_cards': goal_cards,
-        'gamification': gamification,
-        'recommendations': get_recommendations(answers, level)
-    })
-
-
-def generate_goal_cards(answers, points, level):
-    """Generate personalized goal cards based on quiz answers."""
-    goal_cards = []
-    
-    # Analyze answers to determine goals
-    risk_tolerance = 'moderate'
-    time_horizon = 'medium'
-    primary_goal = 'preserve'
-    
-    for answer in answers:
-        q_id = answer.get('question_id')
-        selected = answer.get('selected', [])
-        
-        if q_id == 2:  # Risk tolerance
-            if 'a' in selected or 'b' in selected:
-                risk_tolerance = 'conservative'
-            elif 'd' in selected:
-                risk_tolerance = 'aggressive'
-        
-        if q_id == 3:  # Time horizon
-            if 'a' in selected or 'b' in selected:
-                time_horizon = 'short'
-            elif 'd' in selected:
-                time_horizon = 'long'
-        
-        if q_id == 1:  # Primary goal
-            if 'b' in selected:
-                primary_goal = 'grow'
-            elif 'c' in selected:
-                primary_goal = 'immediate'
-    
-    # Generate goal cards based on profile
-    base_goals = [
-        {
-            'id': 'goal_1',
-            'title': '📋 Organize Estate Documents',
-            'description': 'Gather and organize all estate planning documents',
-            'category': 'organization',
-            'priority': 'high',
-            'points_reward': 50,
-            'estimated_time': '2-4 hours',
-            'status': 'not_started',
-            'steps': [
-                'Locate will and trust documents',
-                'Organize beneficiary designations',
                 'Create digital backup of important papers'
             ]
         },
@@ -988,92 +788,12 @@ def generate_goal_cards(answers, points, level):
     return base_goals
 
 
-def get_achievements(total_points, answers):
-    """Get achievements unlocked based on quiz performance."""
-    achievements = []
-    
-    if total_points >= 20:
-        achievements.append({
-            'id': 'master_planner',
-            'name': 'Master Planner',
-            'icon': '🏆',
-            'description': 'Scored 20+ points on the financial goals quiz'
-        })
-    
-    if total_points >= 15:
-        achievements.append({
-            'id': 'strategic_thinker',
-            'name': 'Strategic Thinker',
-            'icon': '⭐',
-            'description': 'Demonstrated advanced financial planning knowledge'
-        })
-    
-    # Check for specific answer patterns
-    for answer in answers:
-        if answer.get('question_id') == 4:  # Estate planning tasks
-            selected = answer.get('selected', [])
-            if len(selected) >= 3:
-                achievements.append({
-                    'id': 'comprehensive_planner',
-                    'name': 'Comprehensive Planner',
-                    'icon': '📋',
-                    'description': 'Identified multiple estate planning priorities'
-                })
-    
-    if not achievements:
-        achievements.append({
-            'id': 'getting_started',
-            'name': 'Getting Started',
-            'icon': '🎯',
-            'description': 'Completed your first financial goals assessment'
-        })
-    
-    return achievements
-
-
-def get_next_level_points(level_number):
-    """Get points needed for next level."""
-    level_thresholds = {
-        1: 5,
-        2: 10,
-        3: 15,
-        4: 20,
-        5: 25
-    }
-    return level_thresholds.get(level_number + 1, 25)
-
-
-def get_recommendations(answers, level):
-    """Get personalized recommendations based on quiz results."""
-    recommendations = [
-        {
-            'title': 'Start with Document Organization',
-            'description': 'Begin by gathering all estate documents in one place',
-            'priority': 'high'
-        },
-        {
-            'title': 'Schedule Advisor Consultation',
-            'description': 'Meet with a financial advisor to discuss your goals',
-            'priority': 'high'
-        }
-    ]
-    
-    if level in ['Newcomer', 'Beginner']:
-        recommendations.append({
-            'title': 'Financial Education',
-            'description': 'Consider taking a financial planning course or reading estate planning guides',
-            'priority': 'medium'
-        })
-    
-    return recommendations
-
-
 @app.route('/api/goals/generate/<case_id>', methods=['POST'])
 def generate_goals_for_case(case_id):
     """
-    Generate goal cards for a specific case after quiz submission.
-    Uses total_account_value from Textract analysis as budget.
-    Expects: { "quiz_answers": [...], "selected_goals": [...], "total_account_value": 50000.0 }
+    Generate goal cards for a specific case from portfolio data.
+    Uses total_account_value from portfolio analysis.
+    Expects: { "portfolio_data": {...}, "total_account_value": 50000.0 }
     """
     try:
         from goal_generator import generate_goals
@@ -1088,8 +808,7 @@ def generate_goals_for_case(case_id):
     if not data:
         return jsonify({'error': 'Please provide request body'}), 400
     
-    quiz_answers = data.get('quiz_answers', [])
-    selected_goals = data.get('selected_goals', [])
+    portfolio_data = data.get('portfolio_data', {})
     total_account_value = data.get('total_account_value', 0)
     
     # If total_account_value not provided, try to get from case data or use default
@@ -1098,7 +817,8 @@ def generate_goals_for_case(case_id):
         total_account_value = 50000.0  # Default for demo
     
     try:
-        goal_cards = generate_goals(quiz_answers, total_account_value, selected_goals)
+        # Generate goals from portfolio data instead of quiz answers
+        goal_cards = generate_goals_from_portfolio(portfolio_data, total_account_value)
         
         return jsonify({
             'status': 'success',
@@ -1116,6 +836,22 @@ def generate_goals_for_case(case_id):
             'error': f'Failed to generate goals: {str(e)}',
             'goal_cards': []
         }), 500
+
+
+def generate_goals_from_portfolio(portfolio_data, total_value):
+    """Generate goal cards from portfolio data."""
+    # This would use the portfolio data to generate relevant goals
+    # For now, return basic goal structure
+    return [
+        {
+            'id': 'goal_1',
+            'title': 'Portfolio Review',
+            'description': 'Review and understand your inherited portfolio',
+            'current_value': total_value,
+            'target_amount': total_value,
+            'timeline': 'Ongoing'
+        }
+    ]
 
 
 @app.route('/api/goals/complete', methods=['POST'])
