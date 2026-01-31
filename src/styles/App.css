@@ -50,12 +50,15 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  width: 100%;
+  min-height: 100vh;
 }
 
 .app {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  width: 100%;
 }
 
 /* Header - Institutional Navy */
@@ -122,7 +125,7 @@ body {
 .main-content {
   flex: 1;
   padding: var(--spacing-xl);
-  max-width: 1400px;
+  max-width: 1600px;
   width: 100%;
   margin: 0 auto;
 }
@@ -130,16 +133,17 @@ body {
 /* Cards - Soft Elevations */
 .card {
   background: var(--lpl-white);
-  border-radius: var(--radius);
+  border-radius: 12px;
   padding: var(--spacing-xl);
   margin-bottom: var(--spacing-lg);
-  box-shadow: 0 1px 3px var(--lpl-shadow);
-  border: 1px solid var(--lpl-border);
-  transition: box-shadow 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 45, 114, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 45, 114, 0.08);
+  transition: all 0.3s ease;
 }
 
 .card:hover {
-  box-shadow: 0 2px 8px var(--lpl-shadow-medium);
+  box-shadow: 0 4px 16px rgba(0, 45, 114, 0.1), 0 2px 6px rgba(0, 0, 0, 0.06);
+  transform: translateY(-2px);
 }
 
 .card-header {
@@ -172,18 +176,29 @@ body {
 }
 
 .btn-primary {
-  background: var(--lpl-navy);
+  background: linear-gradient(135deg, var(--lpl-navy) 0%, #003A8A 100%);
   color: var(--lpl-white);
-  box-shadow: 0 1px 2px var(--lpl-shadow);
+  box-shadow: 0 4px 12px rgba(0, 45, 114, 0.2);
+  border: none;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
-.btn-primary:hover {
-  background: #003A8A;
-  box-shadow: 0 2px 4px var(--lpl-shadow-medium);
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #003A8A 0%, #0045A0 100%);
+  box-shadow: 0 6px 16px rgba(0, 45, 114, 0.3);
+  transform: translateY(-1px);
 }
 
-.btn-primary:active {
-  transform: translateY(1px);
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(0, 45, 114, 0.2);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .btn-secondary {
@@ -221,30 +236,54 @@ body {
 /* High-Fidelity Upload Zone - Institutional */
 .upload-zone {
   border: 2px dashed var(--lpl-border);
-  border-radius: var(--radius);
-  padding: var(--spacing-xl) var(--spacing-lg);
+  border-radius: 12px;
+  padding: 3rem var(--spacing-lg);
   text-align: center;
   cursor: pointer;
   transition: all 0.3s ease;
-  background: var(--lpl-white);
+  background: linear-gradient(135deg, #fafbfc 0%, #f8f9fa 100%);
   position: relative;
   overflow: hidden;
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-zone::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(0, 45, 114, 0.02) 0%, rgba(40, 126, 51, 0.02) 100%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.upload-zone:hover::before {
+  opacity: 1;
 }
 
 .upload-zone:hover {
   border-color: var(--lpl-navy);
-  background: var(--lpl-gray);
+  background: linear-gradient(135deg, #f5f7fa 0%, #f0f2f5 100%);
+  box-shadow: 0 4px 12px rgba(0, 45, 114, 0.08);
 }
 
 .upload-zone.drag-active {
   border-color: var(--lpl-navy);
-  background: rgba(0, 45, 114, 0.03);
+  background: linear-gradient(135deg, rgba(0, 45, 114, 0.05) 0%, rgba(0, 45, 114, 0.02) 100%);
   border-width: 3px;
+  box-shadow: 0 6px 20px rgba(0, 45, 114, 0.12);
+  transform: scale(1.02);
 }
 
 .upload-zone.has-file {
   border-color: var(--lpl-green);
-  background: rgba(40, 126, 51, 0.02);
+  background: linear-gradient(135deg, rgba(40, 126, 51, 0.04) 0%, rgba(40, 126, 51, 0.02) 100%);
+  border-style: solid;
 }
 
 .upload-zone-content {
@@ -1097,9 +1136,30 @@ body {
   animation: spin 1s linear infinite;
 }
 
+/* Dashboard Grid Responsive */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3rem;
+  width: 100%;
+}
+
+.portfolio-dashboard {
+  width: 100%;
+  max-width: 100%;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+}
+
 @media (max-width: 640px) {
   .upload-zone {
     padding: var(--spacing-lg) var(--spacing-md);
+    min-height: 150px;
   }
   
   .extracted-data-grid {
@@ -1108,6 +1168,19 @@ body {
   
   .portfolio-summary {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .card {
+    padding: var(--spacing-lg);
+  }
+
+  .main-content {
+    padding: var(--spacing-lg);
   }
 }
 

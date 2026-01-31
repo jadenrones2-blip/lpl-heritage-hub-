@@ -1,87 +1,78 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getPortfolioData, subscribeToPortfolioChanges, addExtractedAccount, savePortfolioData } from '../services/portfolioService';
 import { uploadPortfolio } from '../services/api';
 
 function BridgeAgent() {
-  const [portfolioData, setPortfolioData] = useState(null);
-  const [portfolioSummary, setPortfolioSummary] = useState(null);
-  const [syncing, setSyncing] = useState(false);
-  const [lastUpdate, setLastUpdate] = useState(null);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [buildingBridge, setBuildingBridge] = useState(false);
   const [uploadError, setUploadError] = useState(null);
-  const [uploadSuccess, setUploadSuccess] = useState(null);
   const [dragActive, setDragActive] = useState(false);
-  const [syncingAnimation, setSyncingAnimation] = useState(false);
+  
+  // The 9 extracted fields
+  const [extractedData, setExtractedData] = useState(null);
+  const [documentName, setDocumentName] = useState(null);
 
   useEffect(() => {
-    // Load initial portfolio data
-    const data = getPortfolioData();
-    setPortfolioData(data);
-    setLastUpdate(data.last_updated);
+    // Clear data on mount for fresh demo
+    setExtractedData(null);
+    setDocumentName(null);
+    localStorage.removeItem('portfolio_extracted_data');
+  }, []);
 
-    // Load portfolio summary if available
-    const savedSummary = localStorage.getItem('portfolio_summary');
-    if (savedSummary) {
-      try {
-        setPortfolioSummary(JSON.parse(savedSummary));
-      } catch (error) {
-        console.error('Error parsing portfolio summary:', error);
-      }
-    }
-
-    // Subscribe to portfolio changes
-    const unsubscribe = subscribeToPortfolioChanges((newData) => {
-      if (newData.last_updated !== lastUpdate) {
-        setSyncing(true);
-        setTimeout(() => {
-          setPortfolioData(newData);
-          setLastUpdate(newData.last_updated);
-          setSyncing(false);
-        }, 1500);
-      }
-    });
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, [lastUpdate]);
-
-
-  // Calculate total assets by account type
-  const getAccountTypeSummary = () => {
-    if (!portfolioData || !portfolioData.accounts) return {};
+  // Simulate AWS Textract + Bedrock extraction
+  const extractPortfolioData = async (file) => {
+    // Simulate Textract processing
+    await new Promise(resolve => setTimeout(resolve, 2000));
     
-    const summary = {};
-    portfolioData.accounts.forEach(account => {
-      const type = account.account_type || 'Unknown';
-      if (!summary[type]) {
-        summary[type] = { count: 0, total: 0 };
-      }
-      summary[type].count += 1;
-      summary[type].total += account.total_balance || 0;
-    });
-    
-    return summary;
-  };
-
-  const getTimelineLabel = (timeline) => {
-    const labels = {
-      'short': '1-3 Years',
-      'medium': '5 Years',
-      'long': '10+ Years'
+    // Simulate extracted data from PDF
+    // In production, this would come from AWS Textract + Bedrock
+    const mockExtracted = {
+      // Snapshot Fields
+      totalAggregatedAssets: 646091.00,
+      accountBreakdown: [
+        { type: 'Brokerage', balance: 200000.00 },
+        { type: 'Retirement', balance: 350000.00 },
+        { type: 'Savings', balance: 96091.00 }
+      ],
+      assetAllocation: {
+        stocks: 65,
+        bonds: 25,
+        cash: 10
+      },
+      top3Holdings: [
+        { ticker: 'AAPL', name: 'Apple Inc.', value: 125000.00 },
+        { ticker: 'MSFT', name: 'Microsoft Corp.', value: 98000.00 },
+        { ticker: 'GOOGL', name: 'Alphabet Inc.', value: 75000.00 }
+      ],
+      lastStatementDate: '2026-01-15',
+      
+      // Bridge (Goal) Fields
+      primaryGoalTarget: 200000.00, // From quiz (5-Year Home Down Payment)
+      verifiedStatus: true, // "Verified Account" found in document
+      projectedCompletion: '2029-12-31',
+      
+      // Calculated fields
+      brokerageValue: 200000.00, // Extracted from account breakdown
     };
-    return labels[timeline] || 'Ongoing';
-  };
 
-  const accountSummary = getAccountTypeSummary();
+    // Calculate derived fields
+    const primaryGoalProgress = (mockExtracted.brokerageValue / mockExtracted.primaryGoalTarget) * 100;
+    const gapAnalysis = mockExtracted.primaryGoalTarget - mockExtracted.brokerageValue;
+
+    return {
+      ...mockExtracted,
+      primaryGoalProgress: Math.min(primaryGoalProgress, 100),
+      gapAnalysis: Math.max(gapAnalysis, 0)
+    };
+  };
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       setUploadFile(e.target.files[0]);
+      setExtractedData(null);
+      setDocumentName(null);
       setUploadError(null);
-      setUploadSuccess(null);
     }
   };
 
@@ -102,8 +93,9 @@ function BridgeAgent() {
     
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       setUploadFile(e.dataTransfer.files[0]);
+      setExtractedData(null);
+      setDocumentName(null);
       setUploadError(null);
-      setUploadSuccess(null);
     }
   };
 
@@ -114,69 +106,161 @@ function BridgeAgent() {
     }
 
     setUploading(true);
+    setBuildingBridge(true);
     setUploadError(null);
-    setUploadSuccess(null);
+    setDocumentName(uploadFile.name);
 
     try {
-      const result = await uploadPortfolio(uploadFile);
+      // In production: Upload to S3, trigger Textract, then Bedrock
+      // For demo: Simulate extraction
+      const extracted = await extractPortfolioData(uploadFile);
       
-      // Process the uploaded portfolio data
-      if (result.portfolio_data) {
-        // Convert portfolio data to account format
-        const holdings = result.portfolio_data.holdings || [];
-        const accounts = holdings.map((holding, index) => ({
-          id: `uploaded_${Date.now()}_${index}`,
-          account_type: holding.type || holding.category || 'Portfolio Holding',
-          total_balance: holding.value || holding.amount || 0,
-          asset_classes: holding.asset_classes || [holding.category || 'Mixed'],
-          extracted_at: new Date().toISOString(),
-          document_name: result.portfolio_data.source_document || uploadFile.name
-        }));
-
-        // Update portfolio data
-        const currentData = getPortfolioData();
-        const updatedData = {
-          ...currentData,
-          accounts: [...(currentData.accounts || []), ...accounts],
-          total_balance: (currentData.total_balance || 0) + accounts.reduce((sum, acc) => sum + (acc.total_balance || 0), 0),
-          last_updated: new Date().toISOString()
-        };
-        
-        savePortfolioData(updatedData);
-        setPortfolioData(updatedData);
-
-        // Update portfolio summary if provided
-        if (result.summary || result.portfolio_summary) {
-          // Trigger syncing animation
-          setSyncingAnimation(true);
-          setTimeout(() => {
-            const summary = {
-              text: result.summary || result.portfolio_summary,
-              total_value: result.total_account_value || updatedData.total_balance,
-              accounts: accounts,
-              generated_at: new Date().toISOString()
-            };
-            setPortfolioSummary(summary);
-            localStorage.setItem('portfolio_summary', JSON.stringify(summary));
-            setSyncingAnimation(false);
-          }, 2000);
-        }
-
-        setUploadSuccess(`Portfolio uploaded successfully! ${accounts.length} account(s) added. ${result.s3_key ? 'Stored in AWS S3.' : 'Stored locally.'}`);
-        setUploadFile(null);
-      }
+      // Simulate "Building Your Bridge..." animation delay
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      setExtractedData(extracted);
+      localStorage.setItem('portfolio_extracted_data', JSON.stringify(extracted));
+      setBuildingBridge(false);
+      setUploading(false);
     } catch (err) {
       console.error('Portfolio upload error:', err);
-      setUploadError(err.response?.data?.error || err.message || 'Failed to upload portfolio');
-    } finally {
+      setUploadError(err.message || 'Failed to extract portfolio data');
+      setBuildingBridge(false);
       setUploading(false);
     }
   };
 
+  // Pie Chart Component for Asset Allocation
+  const PieChart = ({ data }) => {
+    const { stocks, bonds, cash } = data;
+    const radius = 80;
+    const centerX = 0;
+    const centerY = 0;
+    
+    // Convert percentages to angles (in radians, starting from top)
+    const stocksAngle = (stocks / 100) * 2 * Math.PI;
+    const bondsAngle = (bonds / 100) * 2 * Math.PI;
+    const cashAngle = (cash / 100) * 2 * Math.PI;
+    
+    // Helper function to create arc path
+    const createArc = (startAngle, endAngle) => {
+      const startX = centerX + radius * Math.cos(startAngle - Math.PI / 2);
+      const startY = centerY + radius * Math.sin(startAngle - Math.PI / 2);
+      const endX = centerX + radius * Math.cos(endAngle - Math.PI / 2);
+      const endY = centerY + radius * Math.sin(endAngle - Math.PI / 2);
+      const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+      
+      return `M ${centerX} ${centerY} L ${startX} ${startY} A ${radius} ${radius} 0 ${largeArc} 1 ${endX} ${endY} Z`;
+    };
+    
+    let currentAngle = 0;
+    const stocksPath = createArc(currentAngle, currentAngle + stocksAngle);
+    currentAngle += stocksAngle;
+    const bondsPath = createArc(currentAngle, currentAngle + bondsAngle);
+    currentAngle += bondsAngle;
+    const cashPath = createArc(currentAngle, currentAngle + cashAngle);
+
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+        <svg width="200" height="200" viewBox="-100 -100 200 200">
+          <motion.path
+            d={stocksPath}
+            fill="#002D72"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
+            transition={{ duration: 1, delay: 0.5 }}
+          />
+          <motion.path
+            d={bondsPath}
+            fill="#287E33"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
+            transition={{ duration: 1, delay: 0.7 }}
+          />
+          <motion.path
+            d={cashPath}
+            fill="#FFB81C"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
+            transition={{ duration: 1, delay: 0.9 }}
+          />
+        </svg>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div style={{ width: '16px', height: '16px', background: '#002D72', borderRadius: '4px' }}></div>
+            <span style={{ fontSize: '0.875rem', color: '#666' }}>Stocks: {stocks}%</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div style={{ width: '16px', height: '16px', background: '#287E33', borderRadius: '4px' }}></div>
+            <span style={{ fontSize: '0.875rem', color: '#666' }}>Bonds: {bonds}%</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div style={{ width: '16px', height: '16px', background: '#FFB81C', borderRadius: '4px' }}></div>
+            <span style={{ fontSize: '0.875rem', color: '#666' }}>Cash: {cash}%</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Source Icon Component with Tooltip
+  const SourceIcon = ({ documentName }) => {
+    const [showTooltip, setShowTooltip] = useState(false);
+    
+    return (
+      <div 
+        style={{ position: 'relative', display: 'inline-block', marginLeft: '0.5rem' }}
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+      >
+        <span style={{ 
+          fontSize: '0.875rem', 
+          color: '#002D72', 
+          cursor: 'help',
+          opacity: 0.7
+        }}>ℹ️</span>
+        {showTooltip && (
+          <motion.div
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            style={{
+              position: 'absolute',
+              bottom: '100%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              marginBottom: '0.5rem',
+              padding: '0.5rem 0.75rem',
+              background: '#002D72',
+              color: 'white',
+              borderRadius: '6px',
+              fontSize: '0.75rem',
+              whiteSpace: 'nowrap',
+              zIndex: 1000,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+            }}
+          >
+            Extracted via AI from {documentName}
+            <div style={{
+              position: 'absolute',
+              bottom: '-4px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: 0,
+              height: 0,
+              borderLeft: '4px solid transparent',
+              borderRight: '4px solid transparent',
+              borderTop: '4px solid #002D72'
+            }}></div>
+          </motion.div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div className="bridge-container">
-      {/* Portfolio Summary Card - Sidebar on Desktop */}
-      <div className="card portfolio-summary-card">
+    <div style={{ width: '100%', maxWidth: '100%' }}>
+      {/* Upload Section - Top Card */}
+      <div className="card" style={{ marginBottom: '2rem' }}>
         <div className="card-header">
           <h2 className="card-title">
             Portfolio Summarizer
@@ -184,536 +268,756 @@ function BridgeAgent() {
           </h2>
         </div>
         <p style={{ marginBottom: 'var(--spacing-lg)', color: 'var(--lpl-text-light)', fontSize: 'var(--font-size-sm)' }}>
-          Upload portfolio documents (statements, reports, etc.) to extract data and generate a clear, heir-friendly summary. The Bridge translates complex financial documents into plain language so you understand exactly what you've inherited.
+          Upload portfolio statements to extract and visualize your financial snapshot. The Bridge uses AWS Textract and Bedrock to intelligently map your portfolio data.
         </p>
 
-        {/* Portfolio Upload Section */}
+        {/* Upload Section */}
         <div style={{ marginBottom: 'var(--spacing-lg)' }}>
-          <h3 style={{ marginBottom: 'var(--spacing-md)', fontWeight: 600, color: 'var(--lpl-navy)', fontSize: 'var(--font-size-base)' }}>
-            Upload Portfolio
-          </h3>
           <div 
             className={`upload-zone ${dragActive ? 'drag-active' : ''} ${uploadFile ? 'has-file' : ''}`}
             onDragEnter={handleDrag}
             onDragLeave={handleDrag}
             onDragOver={handleDrag}
             onDrop={handleDrop}
-            onClick={() => !uploadFile && document.getElementById('portfolio-file-input').click()}
-            style={{ marginBottom: 'var(--spacing-md)' }}
           >
             <input
-              id="portfolio-file-input"
               type="file"
-              accept=".pdf,.png,.jpg,.jpeg"
+              id="portfolio-upload"
+              accept=".pdf,.json"
               onChange={handleFileChange}
               style={{ display: 'none' }}
             />
-            
+            <label htmlFor="portfolio-upload" style={{ cursor: 'pointer', textAlign: 'center', position: 'relative', zIndex: 1, width: '100%' }}>
             {uploadFile ? (
-              <div className="upload-zone-content">
-                <div className="upload-icon">✓</div>
-                <p className="upload-file-name">{uploadFile.name}</p>
-                <p className="upload-file-size">
-                  {(uploadFile.size / 1024).toFixed(2)} KB
-                </p>
-                <button 
-                  className="btn btn-secondary"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setUploadFile(null);
-                    setUploadError(null);
-                    setUploadSuccess(null);
-                  }}
-                  style={{ marginTop: '1rem' }}
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.3 }}
                 >
-                  Choose Different File
-                </button>
+                  <div style={{ fontSize: '1.5rem', marginBottom: '0.75rem' }}>📄</div>
+                  <div style={{ 
+                    fontSize: '1.125rem', 
+                    fontWeight: 600, 
+                    color: '#002D72', 
+                    marginBottom: '0.5rem',
+                    wordBreak: 'break-word',
+                    padding: '0 1rem'
+                  }}>
+                    {uploadFile.name}
+                  </div>
+                  <div style={{ 
+                    fontSize: '0.875rem', 
+                    color: '#666',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem'
+                  }}>
+                    <span>✓</span>
+                    <span>Click to change file</span>
               </div>
-            ) : (
-              <div className="upload-zone-content">
-                <div className="upload-icon">📊</div>
-                <p className="upload-title">Drop portfolio document here</p>
-                <p className="upload-subtitle">or click to browse</p>
-                <p className="upload-hint">PDF, PNG, or JPG files accepted</p>
+                </motion.div>
+              ) : (
+                <div>
+                  <motion.div
+                    animate={{ y: [0, -5, 0] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    style={{ fontSize: '4rem', marginBottom: '1.5rem' }}
+                  >
+                    📄
+                  </motion.div>
+                  <div style={{ 
+                    fontSize: '1.125rem', 
+                    fontWeight: 600, 
+                    color: '#002D72', 
+                    marginBottom: '0.5rem',
+                    letterSpacing: '-0.01em'
+                  }}>
+                    Drag & Drop or Click to Upload
+                  </div>
+                  <div style={{ 
+                    fontSize: '0.875rem', 
+                    color: '#666',
+                    marginTop: '0.5rem'
+                  }}>
+                    PDF Portfolio Statement
+                  </div>
               </div>
             )}
+            </label>
           </div>
 
-          <button
-            className="btn btn-primary"
-            onClick={handleUploadPortfolio}
-            disabled={!uploadFile || uploading}
-            style={{ width: '100%' }}
-          >
-            {uploading ? 'Uploading & Summarizing...' : 'Upload & Summarize Portfolio'}
-          </button>
-
-          {uploadError && (
-            <div className="error-message" style={{ marginTop: 'var(--spacing-md)' }}>
-              {uploadError}
-            </div>
+          {uploadFile && (
+            <motion.button
+              whileHover={{ scale: uploading || buildingBridge ? 1 : 1.02 }}
+              whileTap={{ scale: uploading || buildingBridge ? 1 : 0.98 }}
+              className="btn btn-primary"
+              onClick={handleUploadPortfolio}
+              disabled={uploading || buildingBridge}
+              style={{ 
+                width: '100%', 
+                marginTop: '1.5rem',
+                padding: '1rem 2rem',
+                fontSize: '1rem',
+                fontWeight: 600,
+                letterSpacing: '0.01em',
+                boxShadow: uploading || buildingBridge ? 'none' : '0 4px 12px rgba(0, 45, 114, 0.2)',
+                background: uploading || buildingBridge 
+                  ? 'linear-gradient(135deg, #666 0%, #777 100%)'
+                  : 'linear-gradient(135deg, #002D72 0%, #003A8A 100%)'
+              }}
+            >
+              {uploading || buildingBridge ? (
+                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                  <motion.span
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    style={{ display: 'inline-block' }}
+                  >
+                    ⟳
+                  </motion.span>
+                  Processing...
+                </span>
+              ) : (
+                'Extract Portfolio Data'
+              )}
+            </motion.button>
           )}
 
-          {uploadSuccess && (
-            <div className="success-message" style={{ marginTop: 'var(--spacing-md)' }}>
-              {uploadSuccess}
+          {uploadError && (
+            <div style={{ 
+              marginTop: '1rem', 
+              padding: '1rem', 
+              background: '#fee', 
+              color: '#c33', 
+              borderRadius: '8px',
+              fontSize: '0.875rem'
+            }}>
+              {uploadError}
             </div>
           )}
         </div>
 
-        {/* Syncing Animation - Visual data flow from document to Goal Cards */}
+        {/* Building Your Bridge Animation */}
         <AnimatePresence>
-          {(syncing || syncingAnimation) && (
+          {buildingBridge && (
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="syncing-animation-bridge"
+              style={{
+                padding: '4rem 2rem',
+                textAlign: 'center',
+                background: 'linear-gradient(135deg, #f8f9fa 0%, #ffffff 50%, #f8f9fa 100%)',
+                borderRadius: '16px',
+                border: '2px solid #002D72',
+                marginBottom: '2rem',
+                boxShadow: '0 8px 24px rgba(0, 45, 114, 0.12)',
+                position: 'relative',
+                overflow: 'hidden'
+              }}
             >
-              <div className="syncing-content">
-                <div className="syncing-icon-container">
-                  <motion.div
-                    animate={{ 
-                      rotate: 360,
-                      scale: [1, 1.2, 1]
-                    }}
-                    transition={{ 
-                      rotate: { duration: 2, repeat: Infinity, ease: "linear" },
-                      scale: { duration: 1.5, repeat: Infinity }
-                    }}
-                    className="syncing-icon"
-                  >
-                    🔄
-                  </motion.div>
-                </div>
-                <motion.p
-                  animate={{ opacity: [0.5, 1, 0.5] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                  className="syncing-text"
-                >
-                  Processing your portfolio and generating heir-friendly summary...
-                </motion.p>
-                <div className="syncing-progress">
-                  <motion.div
-                    initial={{ width: '0%' }}
-                    animate={{ width: '100%' }}
-                    transition={{ duration: 2, ease: "easeInOut" }}
-                    className="syncing-progress-bar"
-                  />
-                </div>
-                <div className="syncing-steps">
-                  <motion.div
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="syncing-step"
-                  >
-                    ✓ Extracting data with Textract
-                  </motion.div>
-                  <motion.div
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.6 }}
-                    className="syncing-step"
-                  >
-                    ✓ Generating summary with Bedrock
-                  </motion.div>
-                  <motion.div
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 1.0 }}
-                    className="syncing-step"
-                  >
-                    ✓ Generating Heir-Friendly Summary
-                  </motion.div>
-                </div>
-              </div>
-              <style jsx>{`
-                .syncing-animation-bridge {
-                  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-                  border: 2px solid #002D72;
-                  border-radius: 12px;
-                  padding: 2rem;
-                  margin: 1.5rem 0;
-                  text-align: center;
-                }
-
-                .syncing-content {
-                  max-width: 400px;
-                  margin: 0 auto;
-                }
-
-                .syncing-icon-container {
-                  margin-bottom: 1rem;
-                }
-
-                .syncing-icon {
-                  font-size: 3rem;
-                  display: inline-block;
-                }
-
-                .syncing-text {
-                  font-size: 1.125rem;
-                  font-weight: 600;
-                  color: #002D72;
-                  margin-bottom: 1rem;
-                }
-
-                .syncing-progress {
-                  width: 100%;
-                  height: 8px;
-                  background: #e0e0e0;
-                  border-radius: 4px;
-                  overflow: hidden;
-                  margin-bottom: 1.5rem;
-                }
-
-                .syncing-progress-bar {
-                  height: 100%;
-                  background: linear-gradient(90deg, #002D72 0%, #287E33 100%);
-                  border-radius: 4px;
-                }
-
-                .syncing-steps {
-                  display: flex;
-                  flex-direction: column;
-                  gap: 0.5rem;
-                  text-align: left;
-                }
-
-                .syncing-step {
-                  font-size: 0.875rem;
-                  color: #666;
-                  padding: 0.5rem;
-                  background: white;
-                  border-radius: 6px;
-                }
-              `}</style>
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                style={{ fontSize: '3rem', marginBottom: '1rem' }}
+              >
+                🌉
+              </motion.div>
+              <motion.h3
+                animate={{ opacity: [0.5, 1, 0.5] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+                style={{ 
+                  fontSize: '1.5rem', 
+                  fontWeight: 600, 
+                  color: '#002D72',
+                  marginBottom: '0.5rem'
+                }}
+              >
+                Building Your Bridge...
+              </motion.h3>
+              <p style={{ color: '#666', fontSize: '0.875rem' }}>
+                Extracting data with AWS Textract and mapping with Bedrock AI
+              </p>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Total Assets Summary */}
-        <div className="portfolio-summary">
-          <div className="summary-stat">
-            <div className="summary-stat-label">Total Assets</div>
-            <div className="summary-stat-value">
-              ${(portfolioData?.total_balance || 0).toLocaleString('en-US', { 
-                minimumFractionDigits: 2, 
-                maximumFractionDigits: 2 
-              })}
-            </div>
-          </div>
-          <div className="summary-stat">
-            <div className="summary-stat-label">Accounts</div>
-            <div className="summary-stat-value">
-              {portfolioData?.accounts?.length || 0}
-            </div>
-          </div>
-          {portfolioData?.last_updated && (
-            <div className="summary-stat">
-              <div className="summary-stat-label">Last Updated</div>
-              <div className="summary-stat-value" style={{ fontSize: 'var(--font-size-sm)' }}>
-                {new Date(portfolioData.last_updated).toLocaleString()}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Account Breakdown */}
-        {Object.keys(accountSummary).length > 0 && (
-          <div style={{ marginTop: 'var(--spacing-xl)' }}>
-            <h3 style={{ marginBottom: 'var(--spacing-md)', fontWeight: 600, color: 'var(--lpl-navy)', fontSize: 'var(--font-size-lg)' }}>
-              Account Breakdown
-            </h3>
-            <div className="account-breakdown">
-              {Object.entries(accountSummary).map(([type, data]) => (
-                <div key={type} className="account-breakdown-item">
-                  <div className="account-breakdown-header">
-                    <span className="account-breakdown-type">{type}</span>
-                    <span className="account-breakdown-count">{data.count} account{data.count !== 1 ? 's' : ''}</span>
-                  </div>
-                  <div className="account-breakdown-value">
-                    ${data.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {(!portfolioData || !portfolioData.accounts || portfolioData.accounts.length === 0) && (
-          <div className="empty-state">
-            <p style={{ color: 'var(--lpl-text-light)', textAlign: 'center', padding: 'var(--spacing-xl)' }}>
-              No portfolio data yet. Upload a portfolio JSON file above to get started.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Portfolio Summary for Heir - Main Content Area */}
-      <div className="portfolio-summary-section">
-        {portfolioSummary ? (
+        {/* Portfolio Dashboard - 9 Fields */}
+        {extractedData && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="card portfolio-summary-card-main"
+            transition={{ duration: 0.5 }}
+            className="card portfolio-dashboard"
+            style={{ 
+              marginTop: '2rem',
+              boxShadow: '0 4px 20px rgba(0, 45, 114, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04)',
+              border: '1px solid rgba(0, 45, 114, 0.1)',
+              width: '100%',
+              maxWidth: '100%'
+            }}
           >
-            <div className="card-header">
-              <h3 className="card-title">Your Inherited Portfolio Summary</h3>
-              <span className="summary-badge">Generated by The Bridge</span>
+            {/* Header: Total Aggregated Assets */}
+            <div style={{ 
+              textAlign: 'center', 
+              padding: '3rem 2rem',
+              background: 'linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%)',
+              borderRadius: '12px',
+              borderBottom: '2px solid #e0e0e0',
+              marginBottom: '2.5rem',
+              position: 'relative'
+            }}>
+              <div style={{
+                position: 'absolute',
+                top: '1rem',
+                right: '1rem',
+                background: '#287E33',
+                color: 'white',
+                padding: '0.375rem 0.75rem',
+                borderRadius: '20px',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em'
+              }}>
+                Extracted
+              </div>
+              <h2 style={{ 
+                color: '#002D72', 
+                fontSize: '1.5rem', 
+                fontWeight: 600, 
+                marginBottom: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                letterSpacing: '-0.02em'
+              }}>
+                Total Aggregated Assets
+                <SourceIcon documentName={documentName} />
+              </h2>
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.3, duration: 0.5 }}
+                style={{ 
+                  fontSize: '3.5rem', 
+                  fontWeight: 700, 
+                  color: '#002D72',
+                  marginTop: '0.5rem',
+                  letterSpacing: '-0.03em',
+                  lineHeight: 1.1
+                }}
+              >
+                ${extractedData.totalAggregatedAssets.toLocaleString('en-US', { 
+                  minimumFractionDigits: 2, 
+                  maximumFractionDigits: 2 
+                })}
+              </motion.div>
             </div>
 
-            {/* AI-Generated Summary */}
-            <div className="heir-summary-content">
-              <div className="summary-intro">
-                <h4 style={{ color: '#002D72', marginBottom: '0.5rem', fontSize: '1.125rem' }}>
-                  What You've Inherited
-                </h4>
-                <p style={{ color: '#666', fontSize: '0.9375rem', lineHeight: '1.6', marginBottom: '1.5rem' }}>
-                  This summary explains your inherited portfolio in plain language. We've translated complex financial terms into clear explanations.
-                </p>
-              </div>
+            {/* Two-Column Layout */}
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: '1fr 1fr', 
+              gap: '3rem',
+              marginBottom: '2rem',
+              width: '100%'
+            }}
+            className="dashboard-grid"
+            >
+              {/* Left Column: Snapshot Fields */}
+              <div>
+                <h3 style={{ 
+                  color: '#002D72', 
+                  fontSize: '1.25rem', 
+                  fontWeight: 700, 
+                  marginBottom: '2rem',
+                  paddingBottom: '1rem',
+                  borderBottom: '2px solid #e0e0e0',
+                  letterSpacing: '-0.01em'
+                }}>
+                  The Snapshot
+                </h3>
 
-              <div className="summary-text">
-                {portfolioSummary.text ? (
-                  <div 
-                    className="summary-markdown"
-                    dangerouslySetInnerHTML={{ 
-                      __html: portfolioSummary.text
-                        .replace(/\n\n/g, '</p><p>')
-                        .replace(/\n/g, '<br>')
-                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                        .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                    }}
-                  />
-                ) : (
-                  <p>Portfolio summary is being generated...</p>
-                )}
-              </div>
-
-              {/* Detailed Account Breakdown */}
-              {portfolioData && portfolioData.accounts && portfolioData.accounts.length > 0 && (
-                <div className="detailed-accounts" style={{ marginTop: '2rem' }}>
-                  <h4 style={{ color: '#002D72', marginBottom: '1rem', fontSize: '1.125rem' }}>
-                    Account Details
-                  </h4>
-                  <div className="accounts-list">
-                    {portfolioData.accounts.map((account, index) => (
+                {/* Account Breakdown */}
+                <motion.div
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.1 }}
+                  style={{ marginBottom: '1.5rem' }}
+                >
+                  <div style={{ 
+                    fontSize: '0.875rem', 
+                    fontWeight: 600, 
+                    color: '#666',
+                    marginBottom: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}>
+                    Account Breakdown
+                    <SourceIcon documentName={documentName} />
+                  </div>
+                  <div style={{ 
+                    background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)', 
+                    padding: '1.25rem', 
+                    borderRadius: '12px',
+                    border: '1px solid rgba(0, 45, 114, 0.1)',
+                    boxShadow: '0 2px 8px rgba(0, 45, 114, 0.04)'
+                  }}>
+                    {extractedData.accountBreakdown.map((account, index) => (
                       <motion.div
-                        key={account.id || index}
+                        key={index}
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.1 }}
-                        className="account-detail-card"
+                        transition={{ delay: 0.1 + index * 0.1 }}
+                        style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '1rem',
+                          marginBottom: index < extractedData.accountBreakdown.length - 1 ? '0.75rem' : '0',
+                          background: index < extractedData.accountBreakdown.length - 1 ? 'white' : 'transparent',
+                          borderRadius: index < extractedData.accountBreakdown.length - 1 ? '8px' : '0',
+                          borderLeft: '3px solid #002D72',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateX(4px)';
+                          e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 45, 114, 0.08)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'translateX(0)';
+                          e.currentTarget.style.boxShadow = 'none';
+                        }}
                       >
-                        <div className="account-detail-header">
-                          <div>
-                            <div className="account-detail-type">{account.account_type || 'Account'}</div>
-                            {account.document_name && (
-                              <div className="account-detail-source">From: {account.document_name}</div>
-                            )}
-                          </div>
-                          <div className="account-detail-balance">
-                            ${(account.total_balance || 0).toLocaleString('en-US', { 
-                              minimumFractionDigits: 2, 
-                              maximumFractionDigits: 2 
-                            })}
-                          </div>
-                        </div>
-                        {account.asset_classes && account.asset_classes.length > 0 && (
-                          <div className="account-detail-assets">
-                            <span className="assets-label">Asset Classes:</span>
-                            <div className="assets-tags">
-                              {account.asset_classes.map((asset, i) => (
-                                <span key={i} className="asset-tag">{asset}</span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {account.extracted_at && (
-                          <div className="account-detail-date">
-                            Extracted: {new Date(account.extracted_at).toLocaleDateString()}
-                          </div>
-                        )}
+                        <span style={{ color: '#002D72', fontWeight: 600, fontSize: '0.9375rem' }}>{account.type}</span>
+                        <span style={{ color: '#287E33', fontWeight: 700, fontSize: '1.125rem' }}>
+                          ${account.balance.toLocaleString('en-US', { 
+                            minimumFractionDigits: 2, 
+                            maximumFractionDigits: 2 
+                          })}
+                        </span>
                       </motion.div>
                     ))}
                   </div>
-                </div>
-              )}
+                </motion.div>
 
-              {/* Total Value Summary */}
-              {portfolioSummary.total_value && (
-                <div className="total-value-summary" style={{ 
-                  marginTop: '2rem', 
-                  padding: '1.5rem', 
-                  background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
-                  borderRadius: '12px',
-                  border: '2px solid #002D72'
+                {/* Asset Allocation - Pie Chart */}
+                <motion.div
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.2 }}
+                  style={{ marginBottom: '1.5rem' }}
+                >
+                  <div style={{ 
+                    fontSize: '0.875rem', 
+                    fontWeight: 600, 
+                    color: '#666',
+                    marginBottom: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}>
+                    Asset Allocation
+                    <SourceIcon documentName={documentName} />
+                  </div>
+                  <div style={{ 
+                    background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)', 
+                    padding: '2rem', 
+                    borderRadius: '12px',
+                    border: '1px solid rgba(0, 45, 114, 0.1)',
+                    boxShadow: '0 2px 8px rgba(0, 45, 114, 0.04)',
+                    display: 'flex',
+                    justifyContent: 'center'
+                  }}>
+                    <PieChart data={extractedData.assetAllocation} />
+                  </div>
+                </motion.div>
+
+                {/* Top 3 Holdings */}
+                <motion.div
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.3 }}
+                  style={{ marginBottom: '1.5rem' }}
+                >
+                  <div style={{ 
+                    fontSize: '0.875rem', 
+                    fontWeight: 600, 
+                    color: '#666',
+                    marginBottom: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}>
+                    Top 3 Holdings
+                    <SourceIcon documentName={documentName} />
+                  </div>
+                  <div style={{ 
+                    background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)', 
+                    padding: '1.25rem', 
+                    borderRadius: '12px',
+                    border: '1px solid rgba(0, 45, 114, 0.1)',
+                    boxShadow: '0 2px 8px rgba(0, 45, 114, 0.04)'
+                  }}>
+                    {extractedData.top3Holdings.map((holding, index) => (
+                      <motion.div
+                        key={index}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.3 + index * 0.1 }}
+                        style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '1rem',
+                          marginBottom: index < extractedData.top3Holdings.length - 1 ? '0.75rem' : '0',
+                          background: index < extractedData.top3Holdings.length - 1 ? 'white' : 'transparent',
+                          borderRadius: index < extractedData.top3Holdings.length - 1 ? '8px' : '0',
+                          borderLeft: '3px solid #287E33',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateX(4px)';
+                          e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 45, 114, 0.08)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'translateX(0)';
+                          e.currentTarget.style.boxShadow = 'none';
+                        }}
+                      >
+                        <div>
+                          <div style={{ color: '#002D72', fontWeight: 700, fontSize: '1rem', marginBottom: '0.25rem' }}>{holding.ticker}</div>
+                          <div style={{ fontSize: '0.8125rem', color: '#666' }}>{holding.name}</div>
+                        </div>
+                        <span style={{ color: '#287E33', fontWeight: 700, fontSize: '1.125rem' }}>
+                          ${holding.value.toLocaleString('en-US', { 
+                            minimumFractionDigits: 2, 
+                            maximumFractionDigits: 2 
+                          })}
+                        </span>
+                      </motion.div>
+                    ))}
+                  </div>
+                </motion.div>
+
+                {/* Last Statement Date */}
+                <motion.div
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.4 }}
+                >
+                  <div style={{ 
+                    fontSize: '0.875rem', 
+                    fontWeight: 600, 
+                    color: '#666',
+                    marginBottom: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}>
+                    Last Statement Date
+                    <SourceIcon documentName={documentName} />
+            </div>
+                  <div style={{ 
+                    background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)', 
+                    padding: '1.25rem', 
+                    borderRadius: '12px',
+                    border: '1px solid rgba(0, 45, 114, 0.1)',
+                    boxShadow: '0 2px 8px rgba(0, 45, 114, 0.04)',
+                    color: '#002D72',
+                    fontWeight: 600,
+                    fontSize: '1rem',
+                    textAlign: 'center'
+                  }}>
+                    {new Date(extractedData.lastStatementDate).toLocaleDateString('en-US', { 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })}
+                  </div>
+                </motion.div>
+              </div>
+
+              {/* Right Column: Bridge (Goal) Fields */}
+              <div>
+                <h3 style={{ 
+                  color: '#002D72', 
+                  fontSize: '1.25rem', 
+                  fontWeight: 700, 
+                  marginBottom: '2rem',
+                  paddingBottom: '1rem',
+                  borderBottom: '2px solid #e0e0e0',
+                  letterSpacing: '-0.01em'
                 }}>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.875rem', color: '#666', marginBottom: '0.5rem' }}>
-                      Total Inherited Value
+                  The Bridge
+                </h3>
+
+                {/* Primary Goal Progress */}
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.1 }}
+                  style={{ marginBottom: '1.5rem' }}
+                >
+                  <div style={{ 
+                    fontSize: '0.875rem', 
+                    fontWeight: 600, 
+                    color: '#666',
+                    marginBottom: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}>
+                    Primary Goal Progress (5-Year Home Down Payment)
+                    <SourceIcon documentName={documentName} />
+                  </div>
+                  <div style={{ 
+                    background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)', 
+                    padding: '1.75rem', 
+                    borderRadius: '12px',
+                    border: '1px solid rgba(0, 45, 114, 0.1)',
+                    boxShadow: '0 2px 8px rgba(0, 45, 114, 0.04)'
+                  }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '1rem'
+                    }}>
+                      <div>
+                        <div style={{ color: '#002D72', fontWeight: 600, fontSize: '0.9375rem', marginBottom: '0.25rem' }}>
+                          Current: ${extractedData.brokerageValue.toLocaleString('en-US', { 
+                            minimumFractionDigits: 2, 
+                            maximumFractionDigits: 2 
+                          })}
+                        </div>
+                        <div style={{ color: '#666', fontSize: '0.8125rem' }}>
+                          Target: ${extractedData.primaryGoalTarget.toLocaleString('en-US', { 
+                            minimumFractionDigits: 0, 
+                            maximumFractionDigits: 0 
+                          })}
+                        </div>
+                      </div>
+                      <div style={{ 
+                        background: 'linear-gradient(135deg, #287E33 0%, #34C759 100%)',
+                        color: 'white',
+                        padding: '0.75rem 1.25rem',
+                        borderRadius: '12px',
+                        fontWeight: 700,
+                        fontSize: '1.25rem',
+                        boxShadow: '0 2px 8px rgba(40, 126, 51, 0.3)'
+                      }}>
+                        {extractedData.primaryGoalProgress.toFixed(1)}%
+                      </div>
                     </div>
-                    <div style={{ fontSize: '2rem', fontWeight: 700, color: '#002D72' }}>
-                      ${portfolioSummary.total_value.toLocaleString('en-US', { 
+                    <div style={{ 
+                      width: '100%', 
+                      height: '16px', 
+                      background: '#e8e8e8', 
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.06)'
+                    }}>
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${extractedData.primaryGoalProgress}%` }}
+                        transition={{ duration: 2, ease: "easeOut", delay: 0.5 }}
+                        style={{
+                          height: '100%',
+                          background: 'linear-gradient(90deg, #287E33 0%, #34C759 100%)',
+                          borderRadius: '8px',
+                          boxShadow: '0 2px 8px rgba(40, 126, 51, 0.4)',
+                          position: 'relative',
+                          overflow: 'hidden'
+                        }}
+                      >
+                        <motion.div
+                          animate={{ x: ['-100%', '100%'] }}
+                          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)'
+                          }}
+                        />
+                      </motion.div>
+                    </div>
+                  </div>
+                </motion.div>
+
+                {/* Gap Analysis */}
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.2 }}
+                  style={{ marginBottom: '1.5rem' }}
+                >
+                  <div style={{ 
+                    fontSize: '0.875rem', 
+                    fontWeight: 600, 
+                    color: '#666',
+                    marginBottom: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}>
+                    Gap Analysis
+                    <SourceIcon documentName={documentName} />
+                  </div>
+                  <div style={{ 
+                    background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)', 
+                    padding: '1.5rem', 
+                    borderRadius: '12px',
+                    border: '1px solid rgba(0, 45, 114, 0.1)',
+                    boxShadow: '0 2px 8px rgba(0, 45, 114, 0.04)',
+                    textAlign: 'center'
+                  }}>
+                    <div style={{ 
+                      fontSize: '2rem', 
+                      fontWeight: 700, 
+                      color: '#002D72',
+                      marginBottom: '0.5rem',
+                      letterSpacing: '-0.02em'
+                    }}>
+                      ${extractedData.gapAnalysis.toLocaleString('en-US', { 
                         minimumFractionDigits: 2, 
                         maximumFractionDigits: 2 
                       })}
                     </div>
+                    <div style={{ fontSize: '0.875rem', color: '#666', fontWeight: 500 }}>
+                      Remaining to reach target
+                    </div>
                   </div>
-                </div>
-              )}
+                </motion.div>
 
-              {/* Next Steps */}
-              <div className="next-steps" style={{ marginTop: '2rem', padding: '1.5rem', background: '#f8f9fa', borderRadius: '12px' }}>
-                <h4 style={{ color: '#002D72', marginBottom: '1rem', fontSize: '1.125rem' }}>
-                  Recommended Next Steps
-                </h4>
-                <ul style={{ margin: 0, paddingLeft: '1.5rem', color: '#666', lineHeight: '1.8' }}>
-                  <li>Review this summary with a financial advisor</li>
-                  <li>Understand any tax implications of your inheritance</li>
-                  <li>Consider your long-term financial goals</li>
-                  <li>Update beneficiary designations if needed</li>
-                </ul>
-                <button 
-                  className="btn btn-primary"
-                  style={{ marginTop: '1rem', width: '100%' }}
-                  onClick={() => alert('This would open your advisor scheduling interface.')}
+                {/* Verified Status */}
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.3 }}
+                  style={{ marginBottom: '1.5rem' }}
                 >
-                  Schedule Meeting with Advisor
-                </button>
-              </div>
+                  <div style={{ 
+                    fontSize: '0.875rem', 
+                    fontWeight: 600, 
+                    color: '#666',
+                    marginBottom: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}>
+                    Verified Status
+                    <SourceIcon documentName={documentName} />
+                  </div>
+                  {extractedData.verifiedStatus ? (
+                    <motion.div
+                      initial={{ scale: 0.9, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ delay: 0.3, type: "spring", stiffness: 200 }}
+                      style={{ 
+                        background: 'linear-gradient(135deg, #f0f9f0 0%, #e8f5e9 100%)', 
+                        padding: '1.25rem', 
+                        borderRadius: '12px',
+                        border: '2px solid #287E33',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.75rem',
+                        boxShadow: '0 2px 12px rgba(40, 126, 51, 0.2)'
+                      }}
+                    >
+                      <span style={{ fontSize: '1.75rem' }}>✓</span>
+                      <span style={{ 
+                        color: '#287E33', 
+                        fontWeight: 700,
+                        fontSize: '1.125rem',
+                        letterSpacing: '0.02em'
+                      }}>
+                        LPL Verified
+                      </span>
+                    </motion.div>
+                  ) : (
+                    <div style={{ 
+                      background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)', 
+                      padding: '1.25rem', 
+                      borderRadius: '12px',
+                      border: '1px solid rgba(0, 45, 114, 0.1)',
+                      color: '#666',
+                      textAlign: 'center',
+                      fontWeight: 500
+                    }}>
+                      Not Verified
+                    </div>
+                  )}
+                </motion.div>
+
+                {/* Timeline Status */}
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.4 }}
+                >
+                  <div style={{ 
+                    fontSize: '0.875rem', 
+                    fontWeight: 600, 
+                    color: '#666',
+                    marginBottom: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}>
+                    Projected Completion
+                    <SourceIcon documentName={documentName} />
+                  </div>
+                  <div style={{ 
+                    background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)', 
+                    padding: '1.25rem', 
+                    borderRadius: '12px',
+                    border: '1px solid rgba(0, 45, 114, 0.1)',
+                    boxShadow: '0 2px 8px rgba(0, 45, 114, 0.04)',
+                    color: '#002D72',
+                    fontWeight: 600,
+                    fontSize: '1rem',
+                    textAlign: 'center'
+                  }}>
+                    {new Date(extractedData.projectedCompletion).toLocaleDateString('en-US', { 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })}
+                  </div>
+                </motion.div>
+                </div>
             </div>
-
-            <style jsx>{`
-              .portfolio-summary-card-main {
-                max-width: 900px;
-                margin: 0 auto;
-              }
-
-              .summary-badge {
-                font-size: 0.75rem;
-                padding: 0.25rem 0.75rem;
-                background: #002D72;
-                color: white;
-                border-radius: 12px;
-                font-weight: 600;
-              }
-
-              .heir-summary-content {
-                padding: 1.5rem 0;
-              }
-
-              .summary-text {
-                background: white;
-                padding: 1.5rem;
-                border-radius: 8px;
-                border: 1px solid #e0e0e0;
-                line-height: 1.8;
-                color: #333;
-                font-size: 0.9375rem;
-              }
-
-              .summary-text p {
-                margin: 0 0 1rem 0;
-              }
-
-              .summary-text p:last-child {
-                margin-bottom: 0;
-              }
-
-              .summary-text strong {
-                color: #002D72;
-                font-weight: 600;
-              }
-
-              .accounts-list {
-                display: flex;
-                flex-direction: column;
-                gap: 1rem;
-              }
-
-              .account-detail-card {
-                background: white;
-                border: 1px solid #e0e0e0;
-                border-radius: 8px;
-                padding: 1.25rem;
-                transition: box-shadow 0.2s;
-              }
-
-              .account-detail-card:hover {
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-              }
-
-              .account-detail-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: flex-start;
-                margin-bottom: 0.75rem;
-              }
-
-              .account-detail-type {
-                font-weight: 600;
-                color: #002D72;
-                font-size: 1rem;
-                margin-bottom: 0.25rem;
-              }
-
-              .account-detail-source {
-                font-size: 0.8125rem;
-                color: #666;
-              }
-
-              .account-detail-balance {
-                font-size: 1.25rem;
-                font-weight: 700;
-                color: #287E33;
-              }
-
-              .account-detail-assets {
-                margin-top: 0.75rem;
-                padding-top: 0.75rem;
-                border-top: 1px solid #f0f0f0;
-              }
-
-              .assets-label {
-                font-size: 0.8125rem;
-                color: #666;
-                margin-right: 0.5rem;
-              }
-
-              .assets-tags {
-                display: inline-flex;
-                flex-wrap: wrap;
-                gap: 0.5rem;
-                margin-top: 0.5rem;
-              }
-
-              .asset-tag {
-                font-size: 0.75rem;
-                padding: 0.25rem 0.75rem;
-                background: #f0f0f0;
-                border-radius: 12px;
-                color: #002D72;
-                font-weight: 500;
-              }
-
-              .account-detail-date {
-                font-size: 0.75rem;
-                color: #999;
-                margin-top: 0.5rem;
-              }
-            `}</style>
           </motion.div>
-        ) : (
-          <div className="card">
-            <div className="empty-state">
-              <p style={{ color: 'var(--lpl-text-light)', textAlign: 'center', padding: 'var(--spacing-xl)' }}>
-                Upload a portfolio document to generate a clear, heir-friendly summary of what you've inherited.
-              </p>
-            </div>
-          </div>
+        )}
+
+        {/* Empty State */}
+        {!extractedData && !buildingBridge && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="empty-state"
+            style={{
+              textAlign: 'center',
+              padding: '4rem 2rem',
+              background: 'linear-gradient(135deg, #fafbfc 0%, #f8f9fa 100%)',
+              borderRadius: '12px',
+              border: '1px dashed rgba(0, 45, 114, 0.2)',
+              marginTop: '2rem'
+            }}
+          >
+            <div style={{ fontSize: '4rem', marginBottom: '1.5rem', opacity: 0.5 }}>📊</div>
+            <p style={{ 
+              color: 'var(--lpl-text-light)', 
+              fontSize: '1rem',
+              fontWeight: 500,
+              maxWidth: '500px',
+              margin: '0 auto',
+              lineHeight: 1.6
+            }}>
+              Upload a portfolio statement to extract and visualize your financial snapshot.
+            </p>
+          </motion.div>
         )}
       </div>
     </div>
