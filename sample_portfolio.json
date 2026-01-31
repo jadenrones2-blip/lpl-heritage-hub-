@@ -1,0 +1,28 @@
+{
+  "total_value": 250000,
+  "holdings": [
+    {
+      "type": "Roth IRA",
+      "category": "Retirement Account",
+      "value": 125000,
+      "asset_classes": ["Stocks", "Bonds", "ETFs"],
+      "description": "Roth IRA with diversified holdings"
+    },
+    {
+      "type": "Traditional IRA",
+      "category": "Retirement Account",
+      "value": 75000,
+      "asset_classes": ["Large Cap Value", "Bonds"],
+      "description": "Traditional IRA with conservative allocation"
+    },
+    {
+      "type": "Brokerage Account",
+      "category": "Taxable Investment",
+      "value": 50000,
+      "asset_classes": ["Stocks", "ETFs"],
+      "description": "Brokerage account for home down payment"
+    }
+  ],
+  "client_name": "Sample Client",
+  "date": "2024-01-30"
+}

@@ -1,0 +1,33 @@
+LPL Financial - Brand Guidelines
+
+COLOR SCHEME:
+- Primary Blue: #003366 (LPL Corporate Blue)
+- Secondary Blue: #0066CC (LPL Accent Blue)
+- Accent: #00A3E0 (LPL Light Blue)
+- Text: #333333 (Dark Gray)
+- Background: #FFFFFF (White) with #F5F5F5 (Light Gray) for sections
+- Success/Positive: #28A745 (Green)
+- Warning: #FFC107 (Yellow/Amber)
+- Error: #DC3545 (Red)
+
+TYPOGRAPHY:
+- Primary Font: Arial, Helvetica, or similar clean sans-serif
+- Professional, corporate appearance
+- Headings: Bold, 16-24px
+- Body: Regular, 14-16px
+- Clean, readable, trustworthy
+
+BUTTON STYLES:
+- Primary: LPL Corporate Blue (#003366) background, white text
+- Secondary: White background, LPL Corporate Blue border
+- Rounded corners (4-6px)
+- Professional, not overly stylized
+- Clear call-to-action text
+
+UI ELEMENTS:
+- Clean, professional dashboard layout
+- Card-based design for information display
+- Subtle shadows and borders
+- Professional data tables
+- Clear hierarchy and organization
+- Suitable for financial advisor's laptop/desktop

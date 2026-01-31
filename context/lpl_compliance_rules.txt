@@ -1,0 +1,31 @@
+LPL Financial - Account Opening Requirements & NIGO Rules
+
+REQUIRED FIELDS FOR ACCOUNT OPENING FORMS:
+1. Full Legal Name (must match government-issued ID)
+2. Social Security Number (SSN) or Tax ID
+3. Physical Address (P.O. Box not acceptable for primary address)
+4. Date of Birth
+5. Beneficiary Name and Relationship
+6. Signature (wet signature required, not electronic for certain forms)
+7. Account Type Selection
+8. Investment Objective
+9. Risk Tolerance Acknowledgment
+10. Suitability Information
+
+COMMON NIGO ERRORS (Not In Good Order):
+- Missing or incomplete signature
+- Signature date missing or more than 90 days old
+- Beneficiary information incomplete (name but no relationship, or vice versa)
+- Physical address missing or invalid (P.O. Box only)
+- SSN format incorrect or missing
+- Date of birth missing or invalid format
+- Account type not selected
+- Investment objective not specified
+- Risk tolerance not acknowledged
+- Typos in legal name that don't match ID
+- Missing pages from multi-page documents
+
+PRIORITY LEVELS:
+- HIGH: Missing signature, missing SSN, missing beneficiary
+- MEDIUM: Missing address, missing date of birth, incomplete beneficiary info
+- LOW: Typos, formatting issues, missing optional fields
